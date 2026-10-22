@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+venv/
+.env
+.venv/
+
+# ML artifacts (too large for git)
+ml/data/datasets/
+ml/saved_models/
+*.pt
+*.pth
+*.h5
+*.pkl
+*.onnx
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node.js
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
