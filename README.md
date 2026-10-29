@@ -4,6 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green?logo=fastapi)
+![MongoDB](https://img.shields.io/badge/MongoDB-6.0-47A248?logo=mongodb)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.3-EE4C2C?logo=pytorch)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
@@ -31,9 +32,9 @@
 |--------|------|------|
 | **Sumit Kumar Barnwal** | Team Lead · Backend Lead · ML Co-Lead | Backend core, Auth, Admin API, Storage, Forgery Detection ML, Docker/CI |
 | **Ansh** | Backend Dev · ML Co-Lead | Screening API, Celery tasks, Tests, OCR pipeline, Document Classifier ML |
-| **Mohit Trivedi** | Frontend Dev | Dashboard page, Results page, Charts |
-| **Abhilash Jha** | Frontend Dev | Auth pages, Admin panel, Routing, State |
-| **Shubham Kumar** | Frontend Dev | Landing page, Upload page, History page |
+| **Mohit Trivedi** | Database Engineer | MongoDB schema, Database connection, Document models, Aggregations & Indexes |
+| **Abhilash Jha** | Frontend Dev | Dashboard page, Results page, Auth pages, Admin panel, State management |
+| **Shubham Kumar** | Frontend Dev | Landing page, Upload page, History page, Common UI components, Routing |
 
 ---
 
@@ -44,7 +45,7 @@
 ```
 AI-Based-Fake-Identity-Document-Screening-System/
 │
-├── 📂 backend/                          ← Sumit + Ansh
+├── 📂 backend/                          ← Sumit + Ansh + Mohit
 │   ├── app/
 │   │   ├── api/
 │   │   │   └── routes/
@@ -55,11 +56,11 @@ AI-Based-Fake-Identity-Document-Screening-System/
 │   │   ├── core/
 │   │   │   ├── config.py               ← Sumit  (All env/settings)
 │   │   │   ├── security.py             ← Sumit  (JWT, bcrypt, auth dependency)
-│   │   │   └── database.py             ← Sumit  (Async SQLAlchemy, get_db)
+│   │   │   └── database.py             ← Mohit  (MongoDB connection, client setup)
 │   │   ├── models/
-│   │   │   ├── user.py                 ← Sumit  (User ORM model)
-│   │   │   ├── document.py             ← Sumit  (Document ORM model)
-│   │   │   └── screening_result.py     ← Sumit  (ScreeningResult ORM model)
+│   │   │   ├── user.py                 ← Mohit  (User MongoDB model)
+│   │   │   ├── document.py             ← Mohit  (Document MongoDB model)
+│   │   │   └── screening_result.py     ← Mohit  (ScreeningResult MongoDB model)
 │   │   ├── services/
 │   │   │   ├── ml_service.py           ← Sumit  (ML pipeline orchestrator)
 │   │   │   ├── ocr_service.py          ← Ansh   (OCR wrapper for API)
@@ -91,14 +92,14 @@ AI-Based-Fake-Identity-Document-Screening-System/
 │   ├── saved_models/                    (gitignored — model weights go here)
 │   └── requirements.txt
 │
-├── 📂 frontend/                         ← Mohit + Abhilash + Shubham
+├── 📂 frontend/                         ← Abhilash + Shubham
 │   └── src/
 │       ├── components/
-│       │   ├── dashboard/              ← Mohit    (StatsCard, FraudChart, ActivityFeed)
-│       │   ├── results/                ← Mohit    (ResultCard, ConfidenceGauge, FraudIndicators)
+│       │   ├── dashboard/              ← Abhilash (StatsCard, FraudChart, ActivityFeed)
+│       │   ├── results/                ← Abhilash (ResultCard, ConfidenceGauge, FraudIndicators)
 │       │   ├── auth/                   ← Abhilash (LoginForm, RegisterForm, ProtectedRoute)
 │       │   ├── admin/                  ← Abhilash (UserTable, DocumentsTable, SystemStats)
-│       │   ├── common/                 ← Abhilash (Navbar, Sidebar, Toast)
+│       │   ├── common/                 ← Shubham  (Navbar, Sidebar, Toast)
 │       │   ├── upload/                 ← Shubham  (FileDropzone, DocTypeSelector, ImagePreview)
 │       │   ├── history/                ← Shubham  (HistoryTable, StatusBadge, FilterBar)
 │       │   └── home/                   ← Shubham  (HeroSection, FeatureGrid, HowItWorks)
@@ -167,7 +168,7 @@ AI-Based-Fake-Identity-Document-Screening-System/
 ### Prerequisites
 - Python 3.11+
 - Node.js 20+
-- PostgreSQL 15+
+- MongoDB 6.0+
 - Redis 7+
 
 ### 1. Clone the repo
@@ -183,17 +184,19 @@ git checkout -b feature/<name>-<module>
 # Examples:
 # git checkout -b feature/sumit-backend
 # git checkout -b feature/ansh-ml
-# git checkout -b feature/mohit-frontend
+# git checkout -b feature/mohit-database
+# git checkout -b feature/abhilash-frontend
+# git checkout -b feature/shubham-frontend
 ```
 
-### 3. Backend Setup (Sumit / Ansh)
+### 3. Backend & Database Setup (Sumit / Ansh / Mohit)
 ```bash
 cd backend
 python -m venv venv
 venv\Scripts\activate          # Windows
 # source venv/bin/activate     # Mac/Linux
 pip install -r requirements.txt
-cp .env.example .env           # fill in your DB/Redis credentials
+cp .env.example .env           # fill in your MongoDB/Redis credentials
 uvicorn app.main:app --reload
 ```
 API runs at: **http://localhost:8000**  
@@ -206,7 +209,7 @@ pip install -r requirements.txt
 jupyter notebook                # open notebooks/exploration.ipynb to start
 ```
 
-### 5. Frontend Setup (Mohit / Abhilash / Shubham)
+### 5. Frontend Setup (Abhilash / Shubham)
 ```bash
 cd frontend
 npm install
@@ -230,7 +233,7 @@ main  (protected — PRs only)
        ├── feature/sumit-ml
        ├── feature/ansh-backend
        ├── feature/ansh-ml
-       ├── feature/mohit-frontend
+       ├── feature/mohit-database
        ├── feature/abhilash-frontend
        └── feature/shubham-frontend
 ```
@@ -247,7 +250,7 @@ main  (protected — PRs only)
 
 | Week | Goal |
 |------|------|
-| **Week 1** | Repo setup · DB schema · Auth API · ML dataset research · Frontend boilerplate |
+| **Week 1** | Repo setup · MongoDB schema · Auth API · ML dataset research · Frontend boilerplate |
 | **Week 2** | Upload API · OCR pipeline · Document classifier · Upload UI · Auth UI |
 | **Week 3** | Forgery detection model · Screening API · Dashboard UI · Results UI |
 | **Week 4** | ML → API integration · Admin panel · History page |
