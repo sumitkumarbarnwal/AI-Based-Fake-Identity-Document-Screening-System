@@ -3,10 +3,8 @@ import uuid
 import shutil
 import aiofiles
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -45,7 +43,7 @@ class DocumentResponse(BaseModel):
 
 
 class DocumentListResponse(BaseModel):
-    items: list[DocumentResponse]
+    items: List[DocumentResponse]
     total: int
     page: int
     limit: int
@@ -59,7 +57,7 @@ class DocumentListResponse(BaseModel):
 async def upload_document(
     file: UploadFile = File(...),
     current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """
     Upload an identity document image/PDF.
@@ -104,8 +102,7 @@ async def upload_document(
         document_type=DocumentType.UNKNOWN,
         status=DocumentStatus.PENDING,
     )
-    db.add(document)
-    await db.flush()
+    await db["documents"].insert_one(document.to_mongo())
     return document
 
 
@@ -114,65 +111,59 @@ async def list_documents(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """List all documents uploaded by the current user (paginated)."""
     offset = (page - 1) * limit
 
-    total_result = await db.execute(
-        select(func.count(Document.id)).where(Document.user_id == current_user_id)
-    )
-    total = total_result.scalar_one()
+    total = await db["documents"].count_documents({"user_id": current_user_id})
 
-    result = await db.execute(
-        select(Document)
-        .where(Document.user_id == current_user_id)
-        .order_by(Document.created_at.desc())
-        .offset(offset)
+    cursor = (
+        db["documents"]
+        .find({"user_id": current_user_id})
+        .sort("created_at", -1)
+        .skip(offset)
         .limit(limit)
     )
-    documents = result.scalars().all()
+    docs = await cursor.to_list(length=limit)
+    documents = [Document.from_mongo(d) for d in docs]
 
-    return DocumentListResponse(items=list(documents), total=total, page=page, limit=limit)
+    return DocumentListResponse(items=documents, total=total, page=page, limit=limit)
 
 
 @router.get("/{doc_id}", response_model=DocumentResponse)
 async def get_document(
     doc_id: str,
     current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """Retrieve a specific document by ID (must belong to current user)."""
-    result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.user_id == current_user_id)
-    )
-    document = result.scalar_one_or_none()
-    if not document:
+    doc = await db["documents"].find_one({"_id": doc_id, "user_id": current_user_id})
+    if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    return document
+    return Document.from_mongo(doc)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     doc_id: str,
     current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """
     Delete a document.
     - Removes the file from disk
     - Deletes the DB record (cascades to screening_results)
     """
-    result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.user_id == current_user_id)
-    )
-    document = result.scalar_one_or_none()
-    if not document:
+    doc = await db["documents"].find_one({"_id": doc_id, "user_id": current_user_id})
+    if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Remove from disk
-    file_path = Path(document.file_path)
+    file_path = Path(doc["file_path"])
     if file_path.exists():
         file_path.unlink()
 
-    await db.delete(document)
+    # Cascade delete in MongoDB
+    await db["documents"].delete_one({"_id": doc_id})
+    await db["screening_results"].delete_many({"document_id": doc_id})
