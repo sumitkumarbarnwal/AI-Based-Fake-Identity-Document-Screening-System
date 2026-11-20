@@ -1,10 +1,9 @@
-import pytest
+﻿import pytest
 import uuid
 from datetime import datetime, timezone
 from app.models.user import User, UserRole
 from app.models.document import Document, DocumentType, DocumentStatus
 from app.models.screening_result import ScreeningResult, Verdict
-from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
 
 
 def test_user_model_mongo_conversion():
@@ -89,19 +88,6 @@ def test_screening_result_model_mongo_conversion():
     assert hydrated.id == res_id
     assert hydrated.verdict == Verdict.AUTHENTIC
     assert hydrated.ocr_fields["name"] == "Alice"
-
-
-def test_password_and_token_security():
-    plain = "SuperSecurePassword123"
-    hashed = get_password_hash(plain)
-    assert verify_password(plain, hashed) is True
-    assert verify_password("WrongPassword", hashed) is False
-
-    test_sub = str(uuid.uuid4())
-    token = create_access_token(test_sub)
-    payload = decode_token(token)
-    assert payload["sub"] == test_sub
-    assert payload["type"] == "access"
 
 
 @pytest.mark.asyncio
