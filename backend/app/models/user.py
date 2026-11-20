@@ -1,10 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Enum as SAEnum
-from sqlalchemy.orm import Mapped, mapped_column
 import enum
-
-from app.core.database import Base
+from pydantic import BaseModel, Field
 
 
 class UserRole(str, enum.Enum):
@@ -12,28 +9,30 @@ class UserRole(str, enum.Enum):
     ADMIN = "admin"
 
 
-class User(Base):
-    __tablename__ = "users"
+class User(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    email: str
+    username: str
+    full_name: str
+    hashed_password: str
+    role: UserRole = UserRole.USER
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole), default=UserRole.USER, nullable=False
-    )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+    def to_mongo(self) -> dict:
+        d = self.model_dump()
+        d["_id"] = d.pop("id")
+        return d
+
+    @classmethod
+    def from_mongo(cls, data: dict):
+        if not data:
+            return None
+        data = dict(data)
+        if "_id" in data and "id" not in data:
+            data["id"] = str(data["_id"])
+        return cls(**data)
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email} role={self.role}>"

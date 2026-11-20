@@ -1,10 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Enum as SAEnum, BigInteger
-from sqlalchemy.orm import Mapped, mapped_column
 import enum
-
-from app.core.database import Base
+from pydantic import BaseModel, Field
 
 
 class DocumentType(str, enum.Enum):
@@ -23,34 +20,32 @@ class DocumentStatus(str, enum.Enum):
     FAILED = "failed"         # Processing error
 
 
-class Document(Base):
-    __tablename__ = "documents"
+class Document(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    original_filename: str
+    stored_filename: str
+    file_path: str
+    file_size: int  # bytes
+    mime_type: str
+    document_type: DocumentType = DocumentType.UNKNOWN
+    status: DocumentStatus = DocumentStatus.PENDING
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    stored_filename: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
-    file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)  # bytes
-    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    document_type: Mapped[DocumentType] = mapped_column(
-        SAEnum(DocumentType), default=DocumentType.UNKNOWN, nullable=False
-    )
-    status: Mapped[DocumentStatus] = mapped_column(
-        SAEnum(DocumentStatus), default=DocumentStatus.PENDING, nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+    def to_mongo(self) -> dict:
+        d = self.model_dump()
+        d["_id"] = d.pop("id")
+        return d
+
+    @classmethod
+    def from_mongo(cls, data: dict):
+        if not data:
+            return None
+        data = dict(data)
+        if "_id" in data and "id" not in data:
+            data["id"] = str(data["_id"])
+        return cls(**data)
 
     def __repr__(self) -> str:
         return f"<Document id={self.id} type={self.document_type} status={self.status}>"

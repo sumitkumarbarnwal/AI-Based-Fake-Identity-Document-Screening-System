@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 import re
@@ -68,17 +66,17 @@ class RefreshRequest(BaseModel):
 
 
 # ──────────────────────────────────────────────────────
-# Helper
+# Helpers
 # ──────────────────────────────────────────────────────
 
-async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
-    result = await db.execute(select(User).where(User.email == email))
-    return result.scalar_one_or_none()
+async def get_user_by_email(db, email: str) -> Optional[User]:
+    doc = await db["users"].find_one({"email": email})
+    return User.from_mongo(doc) if doc else None
 
 
-async def get_user_by_id(db: AsyncSession, user_id: str) -> Optional[User]:
-    result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
+async def get_user_by_id(db, user_id: str) -> Optional[User]:
+    doc = await db["users"].find_one({"_id": user_id})
+    return User.from_mongo(doc) if doc else None
 
 
 # ──────────────────────────────────────────────────────
@@ -86,7 +84,7 @@ async def get_user_by_id(db: AsyncSession, user_id: str) -> Optional[User]:
 # ──────────────────────────────────────────────────────
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(payload: RegisterRequest, db = Depends(get_db)):
     """
     Register a new user account.
     - Checks for duplicate email/username
@@ -101,8 +99,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
             detail="An account with this email already exists",
         )
     # Check duplicate username
-    result = await db.execute(select(User).where(User.username == payload.username))
-    if result.scalar_one_or_none():
+    existing_username = await db["users"].find_one({"username": payload.username})
+    if existing_username:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Username is already taken",
@@ -115,15 +113,14 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         hashed_password=get_password_hash(payload.password),
         role=UserRole.USER,
     )
-    db.add(user)
-    await db.flush()  # Assign ID before returning
+    await db["users"].insert_one(user.to_mongo())
     return user
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """
     Authenticate with email + password.
@@ -149,7 +146,7 @@ async def login(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def refresh_token(payload: RefreshRequest, db = Depends(get_db)):
     """Exchange a valid refresh token for a new access + refresh token pair."""
     token_data = decode_token(payload.refresh_token)
     if token_data.get("type") != "refresh":
@@ -170,7 +167,7 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """Return the currently authenticated user's profile."""
     user = await get_user_by_id(db, current_user_id)
