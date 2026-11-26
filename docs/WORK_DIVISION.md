@@ -8,8 +8,7 @@
 | `backend/app/main.py` | **Sumit** |
 | `backend/app/core/config.py` | **Sumit** |
 | `backend/app/core/security.py` | **Sumit** |
-| `backend/app/core/database.py` | **Mohit** |
-| `backend/app/models/` | **Mohit** |
+| `backend/app/core/database.py` | **Sumit** |
 | `backend/app/api/routes/auth.py` | **Sumit** |
 | `backend/app/api/routes/documents.py` | **Sumit** |
 | `backend/app/api/routes/admin.py` | **Sumit** |
@@ -23,11 +22,11 @@
 | `ml/models/document_classifier/` | **Ansh** |
 | `ml/data/preprocessing/` | **Sumit** |
 | `ml/notebooks/` | **Sumit + Ansh** |
-| `frontend/src/components/dashboard/` | **Abhilash** |
-| `frontend/src/components/results/` | **Abhilash** |
+| `frontend/src/components/dashboard/` | **Mohit** |
+| `frontend/src/components/results/` | **Mohit** |
 | `frontend/src/components/auth/` | **Abhilash** |
 | `frontend/src/components/admin/` | **Abhilash** |
-| `frontend/src/components/common/` | **Shubham** |
+| `frontend/src/components/common/` | **Abhilash** |
 | `frontend/src/components/upload/` | **Shubham** |
 | `frontend/src/components/history/` | **Shubham** |
 | `frontend/src/components/home/` | **Shubham** |

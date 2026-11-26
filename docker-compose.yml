@@ -6,7 +6,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:password@db:5432/screening_db
+      - MONGODB_URL=mongodb://db:27017
+      - MONGODB_DB_NAME=screening_db
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=your-secret-key-here
     depends_on:
@@ -26,15 +27,11 @@ services:
       - ./frontend:/app
 
   db:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: screening_db
+    image: mongo:7.0
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongo_data:/data/db
 
   redis:
     image: redis:7-alpine
@@ -45,11 +42,12 @@ services:
     build: ./backend
     command: celery -A app.worker worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://postgres:password@db:5432/screening_db
+      - MONGODB_URL=mongodb://db:27017
+      - MONGODB_DB_NAME=screening_db
       - REDIS_URL=redis://redis:6379
     depends_on:
       - backend
       - redis
 
 volumes:
-  postgres_data:
+  mongo_data:

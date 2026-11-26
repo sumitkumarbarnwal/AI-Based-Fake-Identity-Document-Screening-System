@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
 from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, List
 
 from app.core.database import get_db
 from app.core.security import get_current_user_id
@@ -20,11 +18,16 @@ router = APIRouter()
 
 async def require_admin(
     current_user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ) -> User:
     """Dependency that ensures the caller is an admin."""
-    result = await db.execute(select(User).where(User.id == current_user_id))
-    user = result.scalar_one_or_none()
+    doc = await db["users"].find_one({"_id": current_user_id})
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    user = User.from_mongo(doc)
     if not user or user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -51,7 +54,7 @@ class UserAdminResponse(BaseModel):
 
 
 class PaginatedUsers(BaseModel):
-    items: list[UserAdminResponse]
+    items: List[UserAdminResponse]
     total: int
     page: int
     limit: int
@@ -81,32 +84,36 @@ async def list_users(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """List all users in the system (admin only, paginated)."""
     offset = (page - 1) * limit
 
-    total = (await db.execute(select(func.count(User.id)))).scalar_one()
-    result = await db.execute(
-        select(User).order_by(User.created_at.desc()).offset(offset).limit(limit)
+    total = await db["users"].count_documents({})
+    cursor = (
+        db["users"]
+        .find({})
+        .sort("created_at", -1)
+        .skip(offset)
+        .limit(limit)
     )
-    users = result.scalars().all()
+    docs = await cursor.to_list(length=limit)
+    users = [User.from_mongo(d) for d in docs]
 
-    return PaginatedUsers(items=list(users), total=total, page=page, limit=limit)
+    return PaginatedUsers(items=users, total=total, page=page, limit=limit)
 
 
 @router.get("/users/{user_id}", response_model=UserAdminResponse)
 async def get_user(
     user_id: str,
     admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """Get a specific user's details (admin only)."""
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
+    doc = await db["users"].find_one({"_id": user_id})
+    if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
+    return User.from_mongo(doc)
 
 
 @router.patch("/users/{user_id}", response_model=UserAdminResponse)
@@ -114,20 +121,27 @@ async def update_user(
     user_id: str,
     payload: UpdateUserRequest,
     admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """Update a user's role or active status (admin only)."""
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
+    doc = await db["users"].find_one({"_id": user_id})
+    if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user = User.from_mongo(doc)
 
+    update_fields = {}
     if payload.is_active is not None:
         user.is_active = payload.is_active
+        update_fields["is_active"] = payload.is_active
     if payload.role is not None:
         user.role = payload.role
+        update_fields["role"] = payload.role.value if hasattr(payload.role, "value") else str(payload.role)
 
-    await db.flush()
+    if update_fields:
+        update_fields["updated_at"] = datetime.now(timezone.utc)
+        user.updated_at = update_fields["updated_at"]
+        await db["users"].update_one({"_id": user_id}, {"$set": update_fields})
+
     return user
 
 
@@ -136,46 +150,60 @@ async def list_all_documents(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """List all documents across all users (admin only, paginated)."""
     offset = (page - 1) * limit
-    total = (await db.execute(select(func.count(Document.id)))).scalar_one()
-    result = await db.execute(
-        select(Document).order_by(Document.created_at.desc()).offset(offset).limit(limit)
+    total = await db["documents"].count_documents({})
+    cursor = (
+        db["documents"]
+        .find({})
+        .sort("created_at", -1)
+        .skip(offset)
+        .limit(limit)
     )
-    documents = result.scalars().all()
+    docs = await cursor.to_list(length=limit)
     return {
         "items": [
             {
-                "id": d.id, "user_id": d.user_id, "original_filename": d.original_filename,
-                "document_type": d.document_type, "status": d.status, "created_at": str(d.created_at),
+                "id": str(d.get("_id") or d.get("id")),
+                "user_id": d.get("user_id"),
+                "original_filename": d.get("original_filename"),
+                "document_type": d.get("document_type"),
+                "status": d.get("status"),
+                "created_at": str(d.get("created_at")),
             }
-            for d in documents
+            for d in docs
         ],
-        "total": total, "page": page, "limit": limit,
+        "total": total,
+        "page": page,
+        "limit": limit,
     }
 
 
 @router.get("/documents/flagged", response_model=dict)
 async def list_flagged_documents(
     admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """List all documents screened as suspicious or fake (admin only)."""
-    result = await db.execute(
-        select(ScreeningResult)
-        .where(ScreeningResult.verdict.in_([Verdict.SUSPICIOUS, Verdict.FAKE]))
-        .order_by(ScreeningResult.created_at.desc())
+    cursor = (
+        db["screening_results"]
+        .find({"verdict": {"$in": [Verdict.SUSPICIOUS.value, Verdict.FAKE.value]}})
+        .sort("created_at", -1)
         .limit(100)
     )
-    flagged = result.scalars().all()
+    flagged = await cursor.to_list(length=100)
     return {
         "items": [
             {
-                "result_id": r.id, "document_id": r.document_id, "user_id": r.user_id,
-                "verdict": r.verdict, "confidence_score": r.confidence_score,
-                "fraud_indicators": r.fraud_indicators, "created_at": str(r.created_at),
+                "result_id": str(r.get("_id") or r.get("id")),
+                "document_id": r.get("document_id"),
+                "user_id": r.get("user_id"),
+                "verdict": r.get("verdict"),
+                "confidence_score": r.get("confidence_score"),
+                "fraud_indicators": r.get("fraud_indicators"),
+                "created_at": str(r.get("created_at")),
             }
             for r in flagged
         ],
@@ -186,22 +214,16 @@ async def list_flagged_documents(
 @router.get("/stats", response_model=SystemStats)
 async def get_system_stats(
     admin: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+    db = Depends(get_db),
 ):
     """Overall system statistics for the admin dashboard."""
-    total_users = (await db.execute(select(func.count(User.id)))).scalar_one()
-    total_docs = (await db.execute(select(func.count(Document.id)))).scalar_one()
-    total_screenings = (await db.execute(select(func.count(ScreeningResult.id)))).scalar_one()
+    total_users = await db["users"].count_documents({})
+    total_docs = await db["documents"].count_documents({})
+    total_screenings = await db["screening_results"].count_documents({})
 
-    authentic = (await db.execute(
-        select(func.count(ScreeningResult.id)).where(ScreeningResult.verdict == Verdict.AUTHENTIC)
-    )).scalar_one()
-    suspicious = (await db.execute(
-        select(func.count(ScreeningResult.id)).where(ScreeningResult.verdict == Verdict.SUSPICIOUS)
-    )).scalar_one()
-    fake = (await db.execute(
-        select(func.count(ScreeningResult.id)).where(ScreeningResult.verdict == Verdict.FAKE)
-    )).scalar_one()
+    authentic = await db["screening_results"].count_documents({"verdict": Verdict.AUTHENTIC.value})
+    suspicious = await db["screening_results"].count_documents({"verdict": Verdict.SUSPICIOUS.value})
+    fake = await db["screening_results"].count_documents({"verdict": Verdict.FAKE.value})
 
     fraud_rate = ((suspicious + fake) / total_screenings * 100) if total_screenings > 0 else 0.0
 
